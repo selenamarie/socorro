@@ -349,6 +349,7 @@ class FTPScraperCronApp(PostgresBackfillCronApp):
 
                     if kvpairs.get('buildID'):
                         build_id = kvpairs['buildID']
+                        version_build = kvpairs['version_build']
                         self._insert_build(
                             cursor,
                             product_name,
