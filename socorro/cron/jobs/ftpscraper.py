@@ -369,6 +369,7 @@ class FTPScraperCronApp(PostgresBackfillCronApp):
                         logger.debug('is final beta version %s', version)
                         repository = 'mozilla-beta'
                         build_id = kvpairs['buildID']
+                        build_type = 'beta'
                         version_build = kvpairs['version_build']
                         # just force this to 99 until
                         # we deal with version_build properly
