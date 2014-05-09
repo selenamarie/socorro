@@ -4,6 +4,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/
 import boto
 import boto.s3.connection
+import json
 
 from configman import Namespace, class_converter
 from socorro.external.crashstorage_base import CrashStorageBase
