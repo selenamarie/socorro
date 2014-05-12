@@ -69,10 +69,10 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
         return d
 
-    #def _fake_unredacted_processed_crash_as_string(self):
-        #d = self._fake_unredacted_processed_crash()
-        #s = json.dumps(d)
-        #return s
+    def _fake_unredacted_processed_crash_as_string(self):
+        d = self._fake_unredacted_processed_crash()
+        s = json.dumps(d)
+        return s
 
     def setup_mocked_ceph_storage(self):
         config = DotDict({
@@ -485,22 +485,49 @@ class TestCase(socorro.unittest.testbase.TestCase):
             mock.call().__exit__(None, None, None)
         ])
 
+    def test_get_unredacted_processed(self):
+    # setup some internal behaviors and fake outs
+        ceph_store = self.setup_mocked_ceph_storage()
+        mocked_get_contents_as_string = (
+            ceph_store._connect_to_ceph.return_value
+            .create_bucket.return_value
+            .get_contents_as_string
+        )
+        mocked_get_contents_as_string.side_effect = [
+            self._fake_unredacted_processed_crash_as_string()
+        ]
 
+        # the tested call
+        result = ceph_store.get_unredacted_processed(
+            "936ce666-ff3b-4c7a-9674-367fe2120408"
+        )
 
+        # what should have happened internally
+        self.assertEqual(ceph_store._calling_format.call_count, 1)
+        ceph_store._calling_format.assert_called_with()
 
-    #def test_get_unredacted_processed(self):
-        #ceph_store = self.setup_mocked_ceph_storage()
-        #processed_crash = DotDict()
+        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
+        self.assert_ceph_connection_parameters(ceph_store)
 
-    #def test_get_processed(self):
-        #ceph_store = self.setup_mocked_ceph_storage()
-        #faked_hb_row_object = DotDict()
-        #faked_hb_row_object.columns = DotDict()
-        #faked_hb_row_object.columns['processed_data:json'] = DotDict()
-        #faked_hb_row_object.columns['processed_data:json'].value = \
-            #self._fake_unredacted_processed_crash_as_string()
+        self.assertEqual(
+            ceph_store._mocked_connection.create_bucket.call_count,
+            1
+        )
+        ceph_store._mocked_connection.create_bucket.assert_called_with(
+            '120408'
+        )
 
-        #processed_crash = DotDict()
+        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        self.assertEqual(bucket_mock.get_contents_as_string.call_count, 1)
+        bucket_mock.get_contents_as_string.assert_has_calls(
+            [
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.processed_crash'
+                ),
+            ],
+        )
+
+        self.assertEqual(result, self._fake_unredacted_processed_crash())
 
     #def test_get_processed_failure(self):
         #ceph_store = self.setup_mocked_ceph_storage()
