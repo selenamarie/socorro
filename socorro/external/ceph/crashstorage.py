@@ -13,11 +13,11 @@ from socorro.external.crashstorage_base import (
     CrashStorageBase,
     CrashIDNotFound
 )
-from socorro.lib import datetimeutil
 from socorro.lib.util import DotDict
 
 from configman import Namespace
 from configman.converters import class_converter
+
 
 #==============================================================================
 class DumpReader(object):
@@ -49,6 +49,11 @@ class CephCrashStorage(CrashStorageBase):
         'host',
         doc="The hostname of the S3 crash storage to submit to",
         default="ceph.dev.phx1.mozilla.com"
+    )
+    required_config.add_option(
+        'port',
+        doc="The network port of the S3 crash storage to submit to",
+        default=80
     )
 
     required_config.add_option(
@@ -87,7 +92,7 @@ class CephCrashStorage(CrashStorageBase):
 
         # short cuts to external resources - makes testing/mocking easier
         self._connect_to_ceph = boto.connect_s3
-        self._calling_format = boto.s3.connection.OrdinaryCallingFormat()
+        self._calling_format = boto.s3.connection.OrdinaryCallingFormat
         self._CreateError = boto.exception.S3CreateError
 
     #--------------------------------------------------------------------------
@@ -157,7 +162,6 @@ class CephCrashStorage(CrashStorageBase):
                 f.write(a_dump)
         return name_to_pathname_mapping
 
-
     #--------------------------------------------------------------------------
     def get_unredacted_processed(self, crash_id):
         processed_crash_as_string = self._fetch_from_ceph(
@@ -174,7 +178,7 @@ class CephCrashStorage(CrashStorageBase):
         """submit something to ceph.
         """
         if not isinstance(thing, basestring):
-            raise Except('can only submit strings to Ceph')
+            raise Exception('can only submit strings to Ceph')
 
         conn = self._connect()
 
@@ -230,6 +234,7 @@ class CephCrashStorage(CrashStorageBase):
             aws_access_key_id=self.config.access_key,
             aws_secret_access_key=self.config.secret_access_key,
             host=self.config.host,
+            port=self.config.port,
             is_secure=False,
             calling_format=self._calling_format(),
         )
