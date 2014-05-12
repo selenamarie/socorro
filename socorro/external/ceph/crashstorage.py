@@ -43,7 +43,6 @@ class CephCrashStorage(CrashStorageBase):
         doc="The network port of the S3 crash storage to submit to",
         default=80
     )
-
     required_config.add_option(
         'access_key',
         doc="AWS_ACCESS_KEY_ID",
