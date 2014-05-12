@@ -17,6 +17,7 @@ a_raw_crash = {
 }
 a_raw_crash_as_string = json.dumps(a_raw_crash)
 
+
 class TestCase(socorro.unittest.testbase.TestCase):
 
     def _fake_processed_crash(self):
@@ -32,7 +33,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
         return d
 
     def _fake_redacted_processed_crash(self):
-        d =  self._fake_unredacted_processed_crash()
+        d = self._fake_unredacted_processed_crash()
         del d.url
         del d.email
         del d.user_id
@@ -87,6 +88,9 @@ class TestCase(socorro.unittest.testbase.TestCase):
             'access_key': 'this is the access key',
             'secret_access_key': 'secrets',
             'buckets': 'daily',
+            'temporary_file_system_storage_path':
+            '/i/am/hiding/junk/files/here',
+            'dump_file_suffix': '.dump',
         })
         ceph = CephCrashStorage(config)
         ceph._connect_to_ceph = mock.Mock()
@@ -106,7 +110,6 @@ class TestCase(socorro.unittest.testbase.TestCase):
             is_secure=False,
             calling_format=ceph_store._calling_format.return_value
         )
-
 
     def test_save_raw_crash_1(self):
         ceph_store = self.setup_mocked_ceph_storage()
@@ -417,11 +420,73 @@ class TestCase(socorro.unittest.testbase.TestCase):
             }
         )
 
-    #def test_get_raw_dumps_as_files(self):
-        #ceph_store = self.setup_mocked_ceph_storage()
-        #ceph_store._open.return_value = mock.MagicMock()
-        #ceph_store.get_raw_dumps_as_files(
-            #"936ce666-ff3b-4c7a-9674-367fe2120408")
+    def test_get_raw_dumps_as_files(self):
+        # setup some internal behaviors and fake outs
+        ceph_store = self.setup_mocked_ceph_storage()
+        files = [
+            mock.MagicMock(),
+            mock.MagicMock(),
+            mock.MagicMock(),
+        ]
+        ceph_store._open.return_value = mock.MagicMock(
+            side_effect=files
+        )
+        mocked_get_contents_as_string = (
+            ceph_store._connect_to_ceph.return_value
+            .create_bucket.return_value
+            .get_contents_as_string
+        )
+        mocked_get_contents_as_string.side_effect = [
+            '["dump", "flash_dump", "city_dump"]',
+            'this is "dump", the first one',
+            'this is "flash_dump", the second one',
+            'this is "city_dump", the last one',
+        ]
+
+        # the tested call
+        result = ceph_store.get_raw_dumps_as_files(
+            "936ce666-ff3b-4c7a-9674-367fe2120408"
+        )
+
+        # what should have happened internally
+        # we don't care much about the mocked internals as the bulk of that
+        # function is tested elsewhere.
+        # we just need to be concerned about the file writing
+        self.assertEqual(
+            result,
+            {
+                'flash_dump': '/i/am/hiding/junk/files/here/936ce666-ff3b-4'
+                'c7a-9674-367fe2120408.flash_dump.TEMPORARY.dump',
+
+                'city_dump': '/i/am/hiding/junk/files/here/936ce666-ff3b-4c7'
+                'a-9674-367fe2120408.city_dump.TEMPORARY.dump',
+
+                'dump': '/i/am/hiding/junk/files/here/936ce666-ff3b-4c7a-96'
+                '74-367fe2120408.dump.TEMPORARY.dump'
+            }
+        )
+        ceph_store._open.assert_has_calls([
+            mock.call(u'/i/am/hiding/junk/files/here/936ce666-ff3b-4c7a-9674-'
+                      '367fe2120408.flash_dump.TEMPORARY.dump', 'wb'),
+            mock.call().__enter__(),
+            mock.call().__enter__().write(
+                'this is "flash_dump", the second one'
+            ),
+            mock.call().__exit__(None, None, None),
+            mock.call(u'/i/am/hiding/junk/files/here/936ce666-ff3b-4c7a-9674'
+                      '-367fe2120408.city_dump.TEMPORARY.dump', 'wb'),
+            mock.call().__enter__(),
+            mock.call().__enter__().write('this is "city_dump", the last one'),
+            mock.call().__exit__(None, None, None),
+            mock.call(u'/i/am/hiding/junk/files/here/936ce666-ff3b-4c7a-9674-'
+                      '367fe2120408.dump.TEMPORARY.dump', 'wb'),
+            mock.call().__enter__(),
+            mock.call().__enter__().write('this is "dump", the first one'),
+            mock.call().__exit__(None, None, None)
+        ])
+
+
+
 
     #def test_get_unredacted_processed(self):
         #ceph_store = self.setup_mocked_ceph_storage()
