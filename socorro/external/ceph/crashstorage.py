@@ -13,23 +13,11 @@ from socorro.external.crashstorage_base import (
     CrashStorageBase,
     CrashIDNotFound
 )
+from socorro.lib import datetimeutil
 from socorro.lib.util import DotDict
 
 from configman import Namespace
 from configman.converters import class_converter
-
-
-#==============================================================================
-class DumpReader(object):
-    """this class wraps a dump object to embue it with a read method.  This
-    allows the dump to be streamed out as "file" upload."""
-    #--------------------------------------------------------------------------
-    def __init__(self, the_dump):
-        self.dump = the_dump
-
-    #--------------------------------------------------------------------------
-    def read(self):
-        return self.dump
 
 
 #==============================================================================
@@ -94,6 +82,8 @@ class CephCrashStorage(CrashStorageBase):
         self._connect_to_ceph = boto.connect_s3
         self._calling_format = boto.s3.connection.OrdinaryCallingFormat
         self._CreateError = boto.exception.S3CreateError
+        self._open = open
+
 
     #--------------------------------------------------------------------------
     def save_raw_crash(self, raw_crash, dumps, crash_id):
@@ -158,7 +148,7 @@ class CephCrashStorage(CrashStorageBase):
                 )
             )
             name_to_pathname_mapping[a_dump_name] = dump_pathname
-            with open(dump_pathname, 'wb') as f:
+            with self._open(dump_pathname, 'wb') as f:
                 f.write(a_dump)
         return name_to_pathname_mapping
 

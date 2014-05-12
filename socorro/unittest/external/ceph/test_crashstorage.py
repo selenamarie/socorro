@@ -12,7 +12,10 @@ from socorro.external.ceph.crashstorage import CephCrashStorage
 from socorro.database.transaction_executor import TransactionExecutor
 import socorro.unittest.testbase
 
-
+a_raw_crash = {
+    "submitted_timestamp": "2013-01-09T22:21:18.646733+00:00"
+}
+a_raw_crash_as_string = json.dumps(a_raw_crash)
 
 class TestCase(socorro.unittest.testbase.TestCase):
 
@@ -90,6 +93,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
         ceph._calling_format = mock.Mock()
         ceph._calling_format.return_value = mock.Mock()
         ceph._CreateError = mock.Mock()
+        ceph._open = mock.MagicMock()
         return ceph
 
     def test_save_raw_crash_1(self):
@@ -268,14 +272,180 @@ class TestCase(socorro.unittest.testbase.TestCase):
             any_order=True,
         )
 
-    #def test_get_raw_dumps(self):
-        #ceph_store = self.setup_mocked_ceph_storage()
-        #ceph_store.get_raw_dumps("936ce666-ff3b-4c7a-9674-367fe2120408")
+    def test_get_craw_crash(self):
+        # setup some internal behaviors and fake outs
+        ceph_store = self.setup_mocked_ceph_storage()
+        mocked_get_contents_as_string = (
+            ceph_store._connect_to_ceph.return_value
+            .create_bucket.return_value
+            .get_contents_as_string
+        )
+        mocked_get_contents_as_string.side_effect = [
+            a_raw_crash_as_string
+        ]
 
-    #def test_get_raw_dumps_as_files(self):
-        #ceph_store = self.setup_mocked_ceph_storage()
-        #ceph_store.get_raw_dumps_as_files(
-            #"936ce666-ff3b-4c7a-9674-367fe2120408")
+        # the tested call
+        result = ceph_store.get_raw_crash(
+            "936ce666-ff3b-4c7a-9674-367fe2120408"
+        )
+
+        # what should have happened internally
+        self.assertEqual(ceph_store._calling_format.call_count, 1)
+        ceph_store._calling_format.assert_called_with()
+
+        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
+        ceph_store._connect_to_ceph.assert_called_with(
+            aws_access_key_id=ceph_store.config.access_key,
+            aws_secret_access_key=ceph_store.config.secret_access_key,
+            host=ceph_store.config.host,
+            is_secure=False,
+            calling_format=ceph_store._calling_format.return_value
+        )
+
+        self.assertEqual(
+            ceph_store._mocked_connection.create_bucket.call_count,
+            1
+        )
+        ceph_store._mocked_connection.create_bucket.assert_called_with(
+            '120408'
+        )
+
+        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        self.assertEqual(bucket_mock.get_contents_as_string.call_count, 1)
+        bucket_mock.get_contents_as_string.assert_has_calls(
+            [
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.raw_crash'
+                ),
+            ],
+        )
+
+        self.assertEqual(result, a_raw_crash)
+
+    def test_get_raw_dump(self):
+        # setup some internal behaviors and fake outs
+        ceph_store = self.setup_mocked_ceph_storage()
+        mocked_get_contents_as_string = (
+            ceph_store._connect_to_ceph.return_value
+            .create_bucket.return_value
+            .get_contents_as_string
+        )
+        mocked_get_contents_as_string.side_effect = [
+            'this is a raw dump'
+        ]
+
+        # the tested call
+        result = ceph_store.get_raw_dump(
+            "936ce666-ff3b-4c7a-9674-367fe2120408"
+        )
+
+        # what should have happened internally
+        self.assertEqual(ceph_store._calling_format.call_count, 1)
+        ceph_store._calling_format.assert_called_with()
+
+        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
+        ceph_store._connect_to_ceph.assert_called_with(
+            aws_access_key_id=ceph_store.config.access_key,
+            aws_secret_access_key=ceph_store.config.secret_access_key,
+            host=ceph_store.config.host,
+            is_secure=False,
+            calling_format=ceph_store._calling_format.return_value
+        )
+
+        self.assertEqual(
+            ceph_store._mocked_connection.create_bucket.call_count,
+            1
+        )
+        ceph_store._mocked_connection.create_bucket.assert_called_with(
+            '120408'
+        )
+
+        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        self.assertEqual(bucket_mock.get_contents_as_string.call_count, 1)
+        bucket_mock.get_contents_as_string.assert_has_calls(
+            [
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.dump'
+                ),
+            ],
+        )
+
+        self.assertEqual(result, 'this is a raw dump')
+
+    def test_get_raw_dumps(self):
+        # setup some internal behaviors and fake outs
+        ceph_store = self.setup_mocked_ceph_storage()
+        mocked_get_contents_as_string = (
+            ceph_store._connect_to_ceph.return_value
+            .create_bucket.return_value
+            .get_contents_as_string
+        )
+        mocked_get_contents_as_string.side_effect = [
+            '["dump", "flash_dump", "city_dump"]',
+            'this is "dump", the first one',
+            'this is "flash_dump", the second one',
+            'this is "city_dump", the last one',
+        ]
+
+        # the tested call
+        result = ceph_store.get_raw_dumps(
+            "936ce666-ff3b-4c7a-9674-367fe2120408"
+        )
+
+        # what should have happened internally
+        self.assertEqual(ceph_store._calling_format.call_count, 4)
+        ceph_store._calling_format.assert_called_with()
+
+        self.assertEqual(ceph_store._connect_to_ceph.call_count, 4)
+        ceph_store._connect_to_ceph.assert_called_with(
+            aws_access_key_id=ceph_store.config.access_key,
+            aws_secret_access_key=ceph_store.config.secret_access_key,
+            host=ceph_store.config.host,
+            is_secure=False,
+            calling_format=ceph_store._calling_format.return_value
+        )
+
+        self.assertEqual(
+            ceph_store._mocked_connection.create_bucket.call_count,
+            4
+        )
+        ceph_store._mocked_connection.create_bucket.assert_called_with(
+            '120408'
+        )
+
+        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        self.assertEqual(bucket_mock.get_contents_as_string.call_count, 4)
+        bucket_mock.get_contents_as_string.assert_has_calls(
+            [
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.dump_names'
+                ),
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.dump'
+                ),
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.flash_dump'
+                ),
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.city_dump'
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "dump": 'this is "dump", the first one',
+                "flash_dump": 'this is "flash_dump", the second one',
+                "city_dump": 'this is "city_dump", the last one',
+            }
+        )
+
+    def test_get_raw_dumps_as_files(self):
+        ceph_store = self.setup_mocked_ceph_storage()
+        ceph_store.open.return_value = mock.MagicMock()
+        ceph_store.get_raw_dumps_as_files(
+            "936ce666-ff3b-4c7a-9674-367fe2120408")
 
     #def test_get_unredacted_processed(self):
         #ceph_store = self.setup_mocked_ceph_storage()
