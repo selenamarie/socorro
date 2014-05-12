@@ -103,6 +103,13 @@ class CephCrashStorage(CrashStorageBase):
             config.get_processed_crash_url_part,
         )
 
+        # setup shortcuts to some common external methods used to talk to Ceph
+        # this makes the external methods easy to mock in testing.
+        self._encode = poster.encode.multipart_encode
+        self._request = urllib2.Request
+        self._urlopen = urllib2.urlopen
+        self._open_file = open
+
     #--------------------------------------------------------------------------
     def save_raw_crash(self, raw_crash, dumps, crash_id):
         # assuming http POST
@@ -110,9 +117,9 @@ class CephCrashStorage(CrashStorageBase):
             for dump_name, dump_pathname in dumps.iteritems():
                 if not dump_name:
                     dump_name = self.config.source.dump_field
-                raw_crash[dump_name] = open(dump_pathname, 'rb')
-            datagen, headers = poster.encode.multipart_encode(raw_crash)
-            request = urllib2.Request(
+                raw_crash[dump_name] = self._open_file(dump_pathname, 'rb')
+            datagen, headers = self._encode(raw_crash)
+            request = self._request(
                 self.raw_submission_url,
                 datagen,
                 headers
@@ -142,10 +149,10 @@ class CephCrashStorage(CrashStorageBase):
         crash_id = processed_crash['uuid']
         sanitized_processed_crash = self.sanitize(processed_crash)  # jsonify?
         try:
-            datagen, headers = poster.encode.multipart_encode(
+            datagen, headers = self._encode(
                 sanitized_processed_crash
             )
-            request = urllib2.Request(
+            request = self._request(
                 self.processed_submission_url,
                 datagen,
                 headers
@@ -195,7 +202,7 @@ class CephCrashStorage(CrashStorageBase):
         """submit a crash report to ceph.
         """
         try:
-            return urllib2.urlopen(request).read().strip()
+            return self._urlopen(request).read().strip()
         except Exception:
             self.logger.critical(
                 'Submission to ceph failed for %s',
