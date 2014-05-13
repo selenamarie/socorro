@@ -213,7 +213,6 @@ class TestCase(socorro.unittest.testbase.TestCase):
             storage_key_mock.set_contents_from_string.call_count,
             4
         )
-        print storage_key_mock.set_contents_from_string.call_args_list
         storage_key_mock.set_contents_from_string.assert_has_calls(
             [
                 mock.call(
@@ -545,7 +544,6 @@ class TestCase(socorro.unittest.testbase.TestCase):
         )
         mocked_bucket = mock.MagicMock()
         mocked_bucket.get_contents_as_string
-        print 'mocked_get_contents_as_string', mocked_bucket.get_contents_as_string
         mocked_bucket.get_contents_as_string.side_effect = [
             self._fake_unredacted_processed_crash_as_string()
         ]
@@ -557,11 +555,8 @@ class TestCase(socorro.unittest.testbase.TestCase):
         def temp_failure_fn(key):
             self.assertEqual(key, '120408')
             action = actions.pop()
-            print "action", action
             if isinstance(action, Exception):
-                print 'raising'
                 raise action
-            print 'returning'
             return action
 
         ceph_store._connect_to_ceph.return_value.create_bucket.side_effect = (

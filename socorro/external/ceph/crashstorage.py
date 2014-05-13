@@ -4,6 +4,7 @@
 
 import boto
 import boto.s3.connection
+import boto.exception
 import json
 import os
 import socket
@@ -14,7 +15,6 @@ from socorro.external.crashstorage_base import (
     CrashStorageBase,
     CrashIDNotFound
 )
-from socorro.lib import datetimeutil
 from socorro.lib.util import DotDict
 
 from configman import Namespace
@@ -61,7 +61,11 @@ class CephCrashStorage(CrashStorageBase):
     #)
 
     operational_exceptions = (
-        socket.timeout
+        socket.timeout,
+        # wild guesses at retriable exceptions
+        boto.exception.PleaseRetryException,
+        boto.exception.ResumableTransferDisposition,
+        boto.exception.ResumableUploadException,
     )
 
     conditional_exceptions = ()
@@ -83,7 +87,6 @@ class CephCrashStorage(CrashStorageBase):
         self._calling_format = boto.s3.connection.OrdinaryCallingFormat
         self._CreateError = boto.exception.S3CreateError
         self._open = open
-
 
     #--------------------------------------------------------------------------
     @staticmethod
@@ -125,7 +128,10 @@ class CephCrashStorage(CrashStorageBase):
     #--------------------------------------------------------------------------
     @staticmethod
     def do_get_raw_crash(ceph_store, crash_id):
-        raw_crash_as_string = ceph_store._fetch_from_ceph(crash_id, "raw_crash")
+        raw_crash_as_string = ceph_store._fetch_from_ceph(
+            crash_id,
+            "raw_crash"
+        )
         return json.loads(raw_crash_as_string)
 
     #--------------------------------------------------------------------------
@@ -147,7 +153,10 @@ class CephCrashStorage(CrashStorageBase):
     #--------------------------------------------------------------------------
     @staticmethod
     def do_get_raw_dumps(ceph_store, crash_id):
-        dump_names_as_string = ceph_store._fetch_from_ceph(crash_id, "dump_names")
+        dump_names_as_string = ceph_store._fetch_from_ceph(
+            crash_id,
+            "dump_names"
+        )
         dump_names = ceph_store._convert_string_to_list(dump_names_as_string)
         dumps = {}
         for dump_name in dump_names:
@@ -253,10 +262,7 @@ class CephCrashStorage(CrashStorageBase):
             raise
 
         key = "%s.%s" % (crash_id, name_of_thing)
-        print 'bucket', bucket
-        print 'bucket.get_contents_as_string', bucket.get_contents_as_string
         thing_as_string = bucket.get_contents_as_string(key)
-        print 'thing_as_string', thing_as_string
         return thing_as_string
 
     #--------------------------------------------------------------------------
