@@ -226,6 +226,14 @@ class BotoS3CrashStorage(CrashStorageBase):
         return self.transaction(self.do_get_unredacted_processed, crash_id)
 
     #--------------------------------------------------------------------------
+    @staticmethod
+    def _create_bucket_name_for_crash_id(crash_id):
+        return "%s%s" % (
+            crash_id[-6:],
+            crash_id[:2 * int(crash_id[-7])]
+        )
+
+    #--------------------------------------------------------------------------
     def _submit_to_boto_s3(self, crash_id, name_of_thing, thing):
         """submit something to ceph.
         """
@@ -237,7 +245,9 @@ class BotoS3CrashStorage(CrashStorageBase):
         # create/connect to bucket
         try:
             # return a bucket for a given day
-            the_day_bucket_name = crash_id[-6:]
+            the_day_bucket_name = self._create_bucket_name_for_crash_id(
+                crash_id
+            )
             bucket = conn.create_bucket(the_day_bucket_name)
         except self._CreateError:
             # TODO: oops, bucket already taken
@@ -263,7 +273,9 @@ class BotoS3CrashStorage(CrashStorageBase):
         # create/connect to bucket
         try:
             # return a bucket for a given day
-            the_day_bucket_name = crash_id[-6:]
+            the_day_bucket_name = self._create_bucket_name_for_crash_id(
+                crash_id
+            )
             bucket = conn.create_bucket(the_day_bucket_name)
         except self._CreateError:
             # TODO: oops, bucket already taken
