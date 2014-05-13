@@ -8,6 +8,7 @@ import json
 import os
 import socket
 import datetime
+import contextlib
 
 from socorro.external.crashstorage_base import (
     CrashStorageBase,
@@ -85,18 +86,28 @@ class CephCrashStorage(CrashStorageBase):
 
 
     #--------------------------------------------------------------------------
-    def save_raw_crash(self, raw_crash, dumps, crash_id):
-        raw_crash_as_string = self._convert_mapping_to_string(raw_crash)
-        self._submit_to_ceph(crash_id, "raw_crash", raw_crash_as_string)
-        dump_names_as_string = self._convert_list_to_string(dumps.keys())
-        self._submit_to_ceph(crash_id, "dump_names", dump_names_as_string)
+    @staticmethod
+    def do_save_raw_crash(ceph_store, raw_crash, dumps, crash_id):
+        raw_crash_as_string = ceph_store._convert_mapping_to_string(raw_crash)
+        ceph_store._submit_to_ceph(crash_id, "raw_crash", raw_crash_as_string)
+        dump_names_as_string = ceph_store._convert_list_to_string(dumps.keys())
+        ceph_store._submit_to_ceph(
+            crash_id,
+            "dump_names",
+            dump_names_as_string
+        )
         for dump_name, dump in dumps.iteritems():
             if dump_name in (None, '', 'upload_file_minidump'):
                 dump_name = 'dump'
-            self._submit_to_ceph(crash_id, dump_name, dump)
+            ceph_store._submit_to_ceph(crash_id, dump_name, dump)
 
     #--------------------------------------------------------------------------
-    def save_processed(self, processed_crash):
+    def save_raw_crash(self, raw_crash, dumps, crash_id):
+        self.transaction(self.do_save_raw_crash, raw_crash, dumps, crash_id)
+
+    #--------------------------------------------------------------------------
+    @staticmethod
+    def _do_save_processed(self, processed_crash):
         crash_id = processed_crash['uuid']
         processed_crash_as_string = self._convert_mapping_to_string(
             processed_crash
@@ -108,52 +119,77 @@ class CephCrashStorage(CrashStorageBase):
         )
 
     #--------------------------------------------------------------------------
-    def get_raw_crash(self, crash_id):
-        raw_crash_as_string = self._fetch_from_ceph(crash_id, "raw_crash")
+    def save_processed(self, processed_crash):
+        self.transaction(self._do_save_processed, processed_crash)
+
+    #--------------------------------------------------------------------------
+    @staticmethod
+    def do_get_raw_crash(ceph_store, crash_id):
+        raw_crash_as_string = ceph_store._fetch_from_ceph(crash_id, "raw_crash")
         return json.loads(raw_crash_as_string)
 
     #--------------------------------------------------------------------------
-    def get_raw_dump(self, crash_id, name=None):
+    def get_raw_crash(self, crash_id):
+        return self.transaction(self.do_get_raw_crash, crash_id)
+
+    #--------------------------------------------------------------------------
+    @staticmethod
+    def do_get_raw_dump(ceph_store, crash_id, name=None):
         if name is None:
             name = 'dump'
-        a_dump = self._fetch_from_ceph(crash_id, name)
+        a_dump = ceph_store._fetch_from_ceph(crash_id, name)
         return a_dump
 
     #--------------------------------------------------------------------------
-    def get_raw_dumps(self, crash_id):
-        dump_names_as_string = self._fetch_from_ceph(crash_id, "dump_names")
-        dump_names = self._convert_string_to_list(dump_names_as_string)
+    def get_raw_dump(self, crash_id, name=None):
+        return self.transaction(self.do_get_raw_dump, crash_id, name)
+
+    #--------------------------------------------------------------------------
+    @staticmethod
+    def do_get_raw_dumps(ceph_store, crash_id):
+        dump_names_as_string = ceph_store._fetch_from_ceph(crash_id, "dump_names")
+        dump_names = ceph_store._convert_string_to_list(dump_names_as_string)
         dumps = {}
         for dump_name in dump_names:
-            dumps[dump_name] = self._fetch_from_ceph(crash_id, dump_name)
+            dumps[dump_name] = ceph_store._fetch_from_ceph(crash_id, dump_name)
         return dumps
 
     #--------------------------------------------------------------------------
-    def get_raw_dumps_as_files(self, crash_id):
+    def get_raw_dumps(self, crash_id):
+        return self.transaction(self.do_get_raw_dumps, crash_id)
+
+    #--------------------------------------------------------------------------
+    @staticmethod
+    def do_get_raw_dumps_as_files(ceph_store, crash_id):
         """the default implementation of fetching all the dumps as files on
         a file system somewhere.  returns a list of pathnames.
 
         parameters:
            crash_id - the id of a dump to fetch"""
-        dumps_mapping = self.get_raw_dumps(crash_id)
+        dumps_mapping = ceph_store.get_raw_dumps(crash_id)
         name_to_pathname_mapping = {}
         for a_dump_name, a_dump in dumps_mapping.iteritems():
             dump_pathname = os.path.join(
-                self.config.temporary_file_system_storage_path,
+                ceph_store.config.temporary_file_system_storage_path,
                 "%s.%s.TEMPORARY%s" % (
                     crash_id,
                     a_dump_name,
-                    self.config.dump_file_suffix
+                    ceph_store.config.dump_file_suffix
                 )
             )
             name_to_pathname_mapping[a_dump_name] = dump_pathname
-            with self._open(dump_pathname, 'wb') as f:
+            with ceph_store._open(dump_pathname, 'wb') as f:
                 f.write(a_dump)
         return name_to_pathname_mapping
 
     #--------------------------------------------------------------------------
-    def get_unredacted_processed(self, crash_id):
-        processed_crash_as_string = self._fetch_from_ceph(
+    def get_raw_dumps_as_files(self, crash_id):
+        return self.transaction(self.do_get_raw_dumps_as_files, crash_id)
+
+    #--------------------------------------------------------------------------
+    @staticmethod
+    def do_get_unredacted_processed(ceph_store, crash_id):
+        processed_crash_as_string = ceph_store._fetch_from_ceph(
             crash_id,
             "processed_crash"
         )
@@ -161,6 +197,10 @@ class CephCrashStorage(CrashStorageBase):
             processed_crash_as_string,
             object_hook=DotDict
         )
+
+    #--------------------------------------------------------------------------
+    def get_unredacted_processed(self, crash_id):
+        return self.transaction(self.do_get_unredacted_processed, crash_id)
 
     #--------------------------------------------------------------------------
     def _submit_to_ceph(self, crash_id, name_of_thing, thing):
@@ -176,7 +216,6 @@ class CephCrashStorage(CrashStorageBase):
             # return a bucket for a given day
             the_day_bucket_name = crash_id[-6:]
             bucket = conn.create_bucket(the_day_bucket_name)
-            print bucket
         except self._CreateError:
             # TODO: oops, bucket already taken
             # shouldn't ever happen, but let's handle this
@@ -214,7 +253,10 @@ class CephCrashStorage(CrashStorageBase):
             raise
 
         key = "%s.%s" % (crash_id, name_of_thing)
+        print 'bucket', bucket
+        print 'bucket.get_contents_as_string', bucket.get_contents_as_string
         thing_as_string = bucket.get_contents_as_string(key)
+        print 'thing_as_string', thing_as_string
         return thing_as_string
 
     #--------------------------------------------------------------------------
@@ -248,3 +290,41 @@ class CephCrashStorage(CrashStorageBase):
             if isinstance(v, datetime.datetime):
                 items[k] = v.strftime("%Y-%m-%d %H:%M:%S.%f")
         return items
+
+    # because this crashstorage class operates as its own connection class
+    # these function must be present.  The transaction executor will use them
+    # to coordinate retries
+    # essentially to function as a connection, this class must fullfill the
+    # API contract with connection objects recognized by the transaction
+    # manager. The following functions are required by that API.
+    #--------------------------------------------------------------------------
+    def commit(self):
+        """ceph doesn't support transactions so this silently
+        does nothing"""
+
+    #--------------------------------------------------------------------------
+    def rollback(self):
+        """ceph doesn't support transactions so this silently
+        does nothing"""
+
+    #--------------------------------------------------------------------------
+    @contextlib.contextmanager
+    def __call__(self):
+        """this class will serve as its own context manager.  That enables it
+        to use the transaction_executor class for retries"""
+        yield self
+
+    #--------------------------------------------------------------------------
+    def in_transaction(self, dummy):
+        """ceph doesn't support transactions, so it is never in
+        a transaction."""
+        return False
+
+    #--------------------------------------------------------------------------
+    def is_operational_exception(self, msg):
+        return False
+    # Down to at least here^^^
+
+    #--------------------------------------------------------------------------
+    def force_reconnect(self):
+        pass

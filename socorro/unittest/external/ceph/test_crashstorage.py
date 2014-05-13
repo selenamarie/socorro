@@ -9,7 +9,11 @@ import datetime
 from socorro.lib.util import SilentFakeLogger, DotDict
 from socorro.external.crashstorage_base import Redactor
 from socorro.external.ceph.crashstorage import CephCrashStorage
-from socorro.database.transaction_executor import TransactionExecutor
+from socorro.database.transaction_executor import (
+    TransactionExecutor,
+    TransactionExecutorWithLimitedBackoff,
+    TransactionExecutorWithInfiniteBackoff,
+)
 import socorro.unittest.testbase
 
 a_raw_crash = {
@@ -17,6 +21,10 @@ a_raw_crash = {
 }
 a_raw_crash_as_string = json.dumps(a_raw_crash)
 
+class ABadDeal(Exception):
+    pass
+
+CephCrashStorage.operational_exceptions = (ABadDeal, )
 
 class TestCase(socorro.unittest.testbase.TestCase):
 
@@ -74,12 +82,13 @@ class TestCase(socorro.unittest.testbase.TestCase):
         s = json.dumps(d)
         return s
 
-    def setup_mocked_ceph_storage(self):
+    def setup_mocked_ceph_storage(self, executor=TransactionExecutor):
         config = DotDict({
             'source': {
                 'dump_field': 'dump'
             },
-            'transaction_executor_class': TransactionExecutor,
+            'transaction_executor_class': executor,
+            'backoff_delays': [0, 0, 0],
             'redactor_class': Redactor,
             'forbidden_keys': Redactor.required_config.forbidden_keys.default,
             'logger': mock.Mock(),
@@ -529,5 +538,68 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
         self.assertEqual(result, self._fake_unredacted_processed_crash())
 
-    #def test_get_processed_failure(self):
-        #ceph_store = self.setup_mocked_ceph_storage()
+    def test_get_undredacted_processed_with_trouble(self):
+        # setup some internal behaviors and fake outs
+        ceph_store = self.setup_mocked_ceph_storage(
+            TransactionExecutorWithLimitedBackoff
+        )
+        mocked_bucket = mock.MagicMock()
+        mocked_bucket.get_contents_as_string
+        print 'mocked_get_contents_as_string', mocked_bucket.get_contents_as_string
+        mocked_bucket.get_contents_as_string.side_effect = [
+            self._fake_unredacted_processed_crash_as_string()
+        ]
+        actions = [
+            mocked_bucket,
+            ABadDeal('second-hit'),
+            ABadDeal('first hit'),
+        ]
+        def temp_failure_fn(key):
+            self.assertEqual(key, '120408')
+            action = actions.pop()
+            print "action", action
+            if isinstance(action, Exception):
+                print 'raising'
+                raise action
+            print 'returning'
+            return action
+
+        ceph_store._connect_to_ceph.return_value.create_bucket.side_effect = (
+            temp_failure_fn
+        )
+        # the tested call
+        result = ceph_store.get_unredacted_processed(
+            "936ce666-ff3b-4c7a-9674-367fe2120408"
+        )
+
+        # what should have happened internally
+        self.assertEqual(ceph_store._calling_format.call_count, 3)
+        ceph_store._calling_format.assert_called_with()
+
+        self.assertEqual(ceph_store._connect_to_ceph.call_count, 3)
+        self.assert_ceph_connection_parameters(ceph_store)
+
+        self.assertEqual(
+            ceph_store._mocked_connection.create_bucket.call_count,
+            3
+        )
+        ceph_store._mocked_connection.create_bucket.assert_has_calls(
+            [
+                mock.call('120408'),
+                mock.call('120408'),
+                mock.call('120408'),
+            ],
+
+        )
+
+        self.assertEqual(mocked_bucket.get_contents_as_string.call_count, 1)
+        mocked_bucket.get_contents_as_string.assert_has_calls(
+            [
+                mock.call(
+                    '936ce666-ff3b-4c7a-9674-367fe2120408.processed_crash'
+                ),
+            ],
+        )
+
+        self.assertEqual(result, self._fake_unredacted_processed_crash())
+
