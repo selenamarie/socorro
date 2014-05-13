@@ -198,7 +198,7 @@
     #redactor_class='socorro.external.crashstorage_base.Redactor'
 
     # a comma delimited list of storage classes
-    storage_classes='socorro.external.fs.crashstorage.FSLegacyRadixTreeStorage, socorro.external.ceph.crashstorage.CephCrashStorage'
+    storage_classes='socorro.external.fs.crashstorage.FSLegacyRadixTreeStorage, socorro.external.ceph.crashstorage.BotoS3CrashStorage'
 
     [[storage0]]
 
@@ -253,7 +253,7 @@
         #buckets=daily
 
         # None
-        crashstorage_class='socorro.external.ceph.crashstorage.CephCrashStorage'
+        crashstorage_class='socorro.external.ceph.crashstorage.BotoS3CrashStorage'
 
         # a list of keys not allowed in a redacted processed crash
         # see "resource.redactor.forbidden_keys" for the default or override it here
