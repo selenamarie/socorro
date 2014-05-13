@@ -137,11 +137,16 @@ class BotoS3CrashStorage(CrashStorageBase):
     #--------------------------------------------------------------------------
     @staticmethod
     def do_get_raw_crash(boto_s3_store, crash_id):
-        raw_crash_as_string = boto_s3_store._fetch_from_boto_s3(
-            crash_id,
-            "raw_crash"
-        )
-        return json.loads(raw_crash_as_string)
+        try:
+            raw_crash_as_string = boto_s3_store._fetch_from_boto_s3(
+                crash_id,
+                "raw_crash"
+            )
+            return json.loads(raw_crash_as_string)
+        except boto.exception.StorageResponseError, x:
+            raise CrashIDNotFound(
+                '%s not found: %s' % (crash_id, x)
+            )
 
     #--------------------------------------------------------------------------
     def get_raw_crash(self, crash_id):
@@ -150,10 +155,15 @@ class BotoS3CrashStorage(CrashStorageBase):
     #--------------------------------------------------------------------------
     @staticmethod
     def do_get_raw_dump(boto_s3_store, crash_id, name=None):
-        if name is None:
-            name = 'dump'
-        a_dump = boto_s3_store._fetch_from_boto_s3(crash_id, name)
-        return a_dump
+        try:
+            if name is None:
+                name = 'dump'
+            a_dump = boto_s3_store._fetch_from_boto_s3(crash_id, name)
+            return a_dump
+        except boto.exception.StorageResponseError, x:
+            raise CrashIDNotFound(
+                '%s not found: %s' % (crash_id, x)
+            )
 
     #--------------------------------------------------------------------------
     def get_raw_dump(self, crash_id, name=None):
@@ -162,20 +172,25 @@ class BotoS3CrashStorage(CrashStorageBase):
     #--------------------------------------------------------------------------
     @staticmethod
     def do_get_raw_dumps(boto_s3_store, crash_id):
-        dump_names_as_string = boto_s3_store._fetch_from_boto_s3(
-            crash_id,
-            "dump_names"
-        )
-        dump_names = boto_s3_store._convert_string_to_list(
-            dump_names_as_string
-        )
-        dumps = {}
-        for dump_name in dump_names:
-            dumps[dump_name] = boto_s3_store._fetch_from_boto_s3(
+        try:
+            dump_names_as_string = boto_s3_store._fetch_from_boto_s3(
                 crash_id,
-                dump_name
+                "dump_names"
             )
-        return dumps
+            dump_names = boto_s3_store._convert_string_to_list(
+                dump_names_as_string
+            )
+            dumps = {}
+            for dump_name in dump_names:
+                dumps[dump_name] = boto_s3_store._fetch_from_boto_s3(
+                    crash_id,
+                    dump_name
+                )
+            return dumps
+        except boto.exception.StorageResponseError, x:
+            raise CrashIDNotFound(
+                '%s not found: %s' % (crash_id, x)
+            )
 
     #--------------------------------------------------------------------------
     def get_raw_dumps(self, crash_id):
@@ -189,21 +204,26 @@ class BotoS3CrashStorage(CrashStorageBase):
 
         parameters:
            crash_id - the id of a dump to fetch"""
-        dumps_mapping = boto_s3_store.get_raw_dumps(crash_id)
-        name_to_pathname_mapping = {}
-        for a_dump_name, a_dump in dumps_mapping.iteritems():
-            dump_pathname = os.path.join(
-                boto_s3_store.config.temporary_file_system_storage_path,
-                "%s.%s.TEMPORARY%s" % (
-                    crash_id,
-                    a_dump_name,
-                    boto_s3_store.config.dump_file_suffix
+        try:
+            dumps_mapping = boto_s3_store.get_raw_dumps(crash_id)
+            name_to_pathname_mapping = {}
+            for a_dump_name, a_dump in dumps_mapping.iteritems():
+                dump_pathname = os.path.join(
+                    boto_s3_store.config.temporary_file_system_storage_path,
+                    "%s.%s.TEMPORARY%s" % (
+                        crash_id,
+                        a_dump_name,
+                        boto_s3_store.config.dump_file_suffix
+                    )
                 )
+                name_to_pathname_mapping[a_dump_name] = dump_pathname
+                with boto_s3_store._open(dump_pathname, 'wb') as f:
+                    f.write(a_dump)
+            return name_to_pathname_mapping
+        except boto.exception.StorageResponseError, x:
+            raise CrashIDNotFound(
+                '%s not found: %s' % (crash_id, x)
             )
-            name_to_pathname_mapping[a_dump_name] = dump_pathname
-            with boto_s3_store._open(dump_pathname, 'wb') as f:
-                f.write(a_dump)
-        return name_to_pathname_mapping
 
     #--------------------------------------------------------------------------
     def get_raw_dumps_as_files(self, crash_id):
@@ -212,14 +232,19 @@ class BotoS3CrashStorage(CrashStorageBase):
     #--------------------------------------------------------------------------
     @staticmethod
     def do_get_unredacted_processed(boto_s3_store, crash_id):
-        processed_crash_as_string = boto_s3_store._fetch_from_boto_s3(
-            crash_id,
-            "processed_crash"
-        )
-        return json.loads(
-            processed_crash_as_string,
-            object_hook=DotDict
-        )
+        try:
+            processed_crash_as_string = boto_s3_store._fetch_from_boto_s3(
+                crash_id,
+                "processed_crash"
+            )
+            return json.loads(
+                processed_crash_as_string,
+                object_hook=DotDict
+            )
+        except boto.exception.StorageResponseError, x:
+            raise CrashIDNotFound(
+                '%s not found: %s' % (crash_id, x)
+            )
 
     #--------------------------------------------------------------------------
     def get_unredacted_processed(self, crash_id):

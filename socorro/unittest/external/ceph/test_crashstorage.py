@@ -4,16 +4,17 @@
 
 import mock
 import json
-import datetime
 
-from socorro.lib.util import SilentFakeLogger, DotDict
+import boto.exception
+
+from socorro.lib.util import DotDict
 from socorro.external.crashstorage_base import Redactor
 from socorro.external.ceph.crashstorage import BotoS3CrashStorage
 from socorro.database.transaction_executor import (
     TransactionExecutor,
     TransactionExecutorWithLimitedBackoff,
-    TransactionExecutorWithInfiniteBackoff,
 )
+from socorro.external.crashstorage_base import CrashIDNotFound
 import socorro.unittest.testbase
 
 a_raw_crash = {
@@ -624,3 +625,20 @@ class TestCase(socorro.unittest.testbase.TestCase):
                 boto_s3_store._create_bucket_name_for_crash_id(cid),
                 bucket_name
             )
+
+    def test_not_found(self):
+        boto_s3_store = self.setup_mocked_s3_storage()
+        get_contents_as_string_mocked = (
+            boto_s3_store._mocked_connection.create_bucket
+            .return_value.get_contents_as_string
+        )
+        get_contents_as_string_mocked.side_effect = \
+            boto.exception.StorageResponseError(
+                status="you're in trouble",
+                reason="I said so"
+            )
+        self.assertRaises(
+            CrashIDNotFound,
+            boto_s3_store.get_raw_crash,
+            '0bba929f-dead-dead-dead-a43c20071027'
+        )
