@@ -8,7 +8,7 @@ import datetime
 
 from socorro.lib.util import SilentFakeLogger, DotDict
 from socorro.external.crashstorage_base import Redactor
-from socorro.external.ceph.crashstorage import CephCrashStorage
+from socorro.external.ceph.crashstorage import BotoS3CrashStorage
 from socorro.database.transaction_executor import (
     TransactionExecutor,
     TransactionExecutorWithLimitedBackoff,
@@ -24,7 +24,7 @@ a_raw_crash_as_string = json.dumps(a_raw_crash)
 class ABadDeal(Exception):
     pass
 
-CephCrashStorage.operational_exceptions = (ABadDeal, )
+BotoS3CrashStorage.operational_exceptions = (ABadDeal, )
 
 class TestCase(socorro.unittest.testbase.TestCase):
 
@@ -82,7 +82,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
         s = json.dumps(d)
         return s
 
-    def setup_mocked_ceph_storage(self, executor=TransactionExecutor):
+    def setup_mocked_s3_storage(self, executor=TransactionExecutor):
         config = DotDict({
             'source': {
                 'dump_field': 'dump'
@@ -92,7 +92,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
             'redactor_class': Redactor,
             'forbidden_keys': Redactor.required_config.forbidden_keys.default,
             'logger': mock.Mock(),
-            'host': 'ceph.is.out.here.somewhere',
+            'host': 's3.is.out.here.somewhere',
             'port': 38080,
             'access_key': 'this is the access key',
             'secret_access_key': 'secrets',
@@ -101,51 +101,51 @@ class TestCase(socorro.unittest.testbase.TestCase):
             '/i/am/hiding/junk/files/here',
             'dump_file_suffix': '.dump',
         })
-        ceph = CephCrashStorage(config)
-        ceph._connect_to_ceph = mock.Mock()
-        ceph._mocked_connection = ceph._connect_to_ceph.return_value
-        ceph._calling_format = mock.Mock()
-        ceph._calling_format.return_value = mock.Mock()
-        ceph._CreateError = mock.Mock()
-        ceph._open = mock.MagicMock()
-        return ceph
+        s3 = BotoS3CrashStorage(config)
+        s3._connect_to_endpoint = mock.Mock()
+        s3._mocked_connection = s3._connect_to_endpoint.return_value
+        s3._calling_format = mock.Mock()
+        s3._calling_format.return_value = mock.Mock()
+        s3._CreateError = mock.Mock()
+        s3._open = mock.MagicMock()
+        return s3
 
-    def assert_ceph_connection_parameters(self, ceph_store):
-        ceph_store._connect_to_ceph.assert_called_with(
-            aws_access_key_id=ceph_store.config.access_key,
-            aws_secret_access_key=ceph_store.config.secret_access_key,
-            host=ceph_store.config.host,
+    def assert_s3_connection_parameters(self, boto_s3_store):
+        boto_s3_store._connect_to_endpoint.assert_called_with(
+            aws_access_key_id=boto_s3_store.config.access_key,
+            aws_secret_access_key=boto_s3_store.config.secret_access_key,
+            host=boto_s3_store.config.host,
             port=38080,
             is_secure=False,
-            calling_format=ceph_store._calling_format.return_value
+            calling_format=boto_s3_store._calling_format.return_value
         )
 
     def test_save_raw_crash_1(self):
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
 
         # the tested call
-        ceph_store.save_raw_crash(
+        boto_s3_store.save_raw_crash(
             {"submitted_timestamp": "2013-01-09T22:21:18.646733+00:00"},
             {},
             "0bba929f-8721-460c-dead-a43c20071027"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 2)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 2)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 2)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 2)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             2
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '071027'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.new_key.call_count, 2)
         bucket_mock.new_key.assert_has_calls(
             [
@@ -172,31 +172,31 @@ class TestCase(socorro.unittest.testbase.TestCase):
         )
 
     def test_save_raw_crash_2(self):
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
 
         # the tested call
-        ceph_store.save_raw_crash(
+        boto_s3_store.save_raw_crash(
             {"submitted_timestamp": "2013-01-09T22:21:18.646733+00:00"},
             {'dump': 'fake dump', 'flash_dump': 'fake flash dump'},
             "0bba929f-8721-460c-dead-a43c20071027"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 4)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 4)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 4)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 4)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             4
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '071027'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.new_key.call_count, 4)
         bucket_mock.new_key.assert_has_calls(
             [
@@ -227,31 +227,31 @@ class TestCase(socorro.unittest.testbase.TestCase):
         )
 
     def test_save_processed(self):
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
 
         # the tested call
-        ceph_store.save_processed({
+        boto_s3_store.save_processed({
             "uuid": "0bba929f-8721-460c-dead-a43c20071027",
             "completeddatetime": "2012-04-08 10:56:50.902884",
             "signature": 'now_this_is_a_signature'
         })
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 1)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 1)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 1)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             1
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '071027'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.new_key.call_count, 1)
         bucket_mock.new_key.assert_has_calls(
             [
@@ -279,9 +279,9 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
     def test_get_craw_crash(self):
         # setup some internal behaviors and fake outs
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
         mocked_get_contents_as_string = (
-            ceph_store._connect_to_ceph.return_value
+            boto_s3_store._connect_to_endpoint.return_value
             .create_bucket.return_value
             .get_contents_as_string
         )
@@ -290,26 +290,26 @@ class TestCase(socorro.unittest.testbase.TestCase):
         ]
 
         # the tested call
-        result = ceph_store.get_raw_crash(
+        result = boto_s3_store.get_raw_crash(
             "936ce666-ff3b-4c7a-9674-367fe2120408"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 1)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 1)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 1)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             1
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '120408'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.get_contents_as_string.call_count, 1)
         bucket_mock.get_contents_as_string.assert_has_calls(
             [
@@ -323,9 +323,9 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
     def test_get_raw_dump(self):
         # setup some internal behaviors and fake outs
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
         mocked_get_contents_as_string = (
-            ceph_store._connect_to_ceph.return_value
+            boto_s3_store._connect_to_endpoint.return_value
             .create_bucket.return_value
             .get_contents_as_string
         )
@@ -334,26 +334,26 @@ class TestCase(socorro.unittest.testbase.TestCase):
         ]
 
         # the tested call
-        result = ceph_store.get_raw_dump(
+        result = boto_s3_store.get_raw_dump(
             "936ce666-ff3b-4c7a-9674-367fe2120408"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 1)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 1)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 1)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             1
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '120408'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.get_contents_as_string.call_count, 1)
         bucket_mock.get_contents_as_string.assert_has_calls(
             [
@@ -367,9 +367,9 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
     def test_get_raw_dumps(self):
         # setup some internal behaviors and fake outs
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
         mocked_get_contents_as_string = (
-            ceph_store._connect_to_ceph.return_value
+            boto_s3_store._connect_to_endpoint.return_value
             .create_bucket.return_value
             .get_contents_as_string
         )
@@ -381,26 +381,26 @@ class TestCase(socorro.unittest.testbase.TestCase):
         ]
 
         # the tested call
-        result = ceph_store.get_raw_dumps(
+        result = boto_s3_store.get_raw_dumps(
             "936ce666-ff3b-4c7a-9674-367fe2120408"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 4)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 4)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 4)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 4)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             4
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '120408'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.get_contents_as_string.call_count, 4)
         bucket_mock.get_contents_as_string.assert_has_calls(
             [
@@ -430,17 +430,17 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
     def test_get_raw_dumps_as_files(self):
         # setup some internal behaviors and fake outs
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
         files = [
             mock.MagicMock(),
             mock.MagicMock(),
             mock.MagicMock(),
         ]
-        ceph_store._open.return_value = mock.MagicMock(
+        boto_s3_store._open.return_value = mock.MagicMock(
             side_effect=files
         )
         mocked_get_contents_as_string = (
-            ceph_store._connect_to_ceph.return_value
+            boto_s3_store._connect_to_endpoint.return_value
             .create_bucket.return_value
             .get_contents_as_string
         )
@@ -452,7 +452,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
         ]
 
         # the tested call
-        result = ceph_store.get_raw_dumps_as_files(
+        result = boto_s3_store.get_raw_dumps_as_files(
             "936ce666-ff3b-4c7a-9674-367fe2120408"
         )
 
@@ -473,7 +473,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
                 '74-367fe2120408.dump.TEMPORARY.dump'
             }
         )
-        ceph_store._open.assert_has_calls([
+        boto_s3_store._open.assert_has_calls([
             mock.call(u'/i/am/hiding/junk/files/here/936ce666-ff3b-4c7a-9674-'
                       '367fe2120408.flash_dump.TEMPORARY.dump', 'wb'),
             mock.call().__enter__(),
@@ -495,9 +495,9 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
     def test_get_unredacted_processed(self):
     # setup some internal behaviors and fake outs
-        ceph_store = self.setup_mocked_ceph_storage()
+        boto_s3_store = self.setup_mocked_s3_storage()
         mocked_get_contents_as_string = (
-            ceph_store._connect_to_ceph.return_value
+            boto_s3_store._connect_to_endpoint.return_value
             .create_bucket.return_value
             .get_contents_as_string
         )
@@ -506,26 +506,26 @@ class TestCase(socorro.unittest.testbase.TestCase):
         ]
 
         # the tested call
-        result = ceph_store.get_unredacted_processed(
+        result = boto_s3_store.get_unredacted_processed(
             "936ce666-ff3b-4c7a-9674-367fe2120408"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 1)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 1)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 1)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 1)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             1
         )
-        ceph_store._mocked_connection.create_bucket.assert_called_with(
+        boto_s3_store._mocked_connection.create_bucket.assert_called_with(
             '120408'
         )
 
-        bucket_mock = ceph_store._mocked_connection.create_bucket.return_value
+        bucket_mock = boto_s3_store._mocked_connection.create_bucket.return_value
         self.assertEqual(bucket_mock.get_contents_as_string.call_count, 1)
         bucket_mock.get_contents_as_string.assert_has_calls(
             [
@@ -539,7 +539,7 @@ class TestCase(socorro.unittest.testbase.TestCase):
 
     def test_get_undredacted_processed_with_trouble(self):
         # setup some internal behaviors and fake outs
-        ceph_store = self.setup_mocked_ceph_storage(
+        boto_s3_store = self.setup_mocked_s3_storage(
             TransactionExecutorWithLimitedBackoff
         )
         mocked_bucket = mock.MagicMock()
@@ -559,26 +559,26 @@ class TestCase(socorro.unittest.testbase.TestCase):
                 raise action
             return action
 
-        ceph_store._connect_to_ceph.return_value.create_bucket.side_effect = (
+        boto_s3_store._connect_to_endpoint.return_value.create_bucket.side_effect = (
             temp_failure_fn
         )
         # the tested call
-        result = ceph_store.get_unredacted_processed(
+        result = boto_s3_store.get_unredacted_processed(
             "936ce666-ff3b-4c7a-9674-367fe2120408"
         )
 
         # what should have happened internally
-        self.assertEqual(ceph_store._calling_format.call_count, 3)
-        ceph_store._calling_format.assert_called_with()
+        self.assertEqual(boto_s3_store._calling_format.call_count, 3)
+        boto_s3_store._calling_format.assert_called_with()
 
-        self.assertEqual(ceph_store._connect_to_ceph.call_count, 3)
-        self.assert_ceph_connection_parameters(ceph_store)
+        self.assertEqual(boto_s3_store._connect_to_endpoint.call_count, 3)
+        self.assert_s3_connection_parameters(boto_s3_store)
 
         self.assertEqual(
-            ceph_store._mocked_connection.create_bucket.call_count,
+            boto_s3_store._mocked_connection.create_bucket.call_count,
             3
         )
-        ceph_store._mocked_connection.create_bucket.assert_has_calls(
+        boto_s3_store._mocked_connection.create_bucket.assert_has_calls(
             [
                 mock.call('120408'),
                 mock.call('120408'),

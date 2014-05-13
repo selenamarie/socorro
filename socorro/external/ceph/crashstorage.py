@@ -22,8 +22,9 @@ from configman.converters import class_converter
 
 
 #==============================================================================
-class CephCrashStorage(CrashStorageBase):
-    """This class sends processed crash reports to Ceph
+class BotoS3CrashStorage(CrashStorageBase):
+    """This class sends processed crash reports to an end point reachable
+    by the boto S3 library.
     """
 
     required_config = Namespace()
@@ -72,7 +73,7 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     def __init__(self, config, quit_check_callback=None):
-        super(CephCrashStorage, self).__init__(
+        super(BotoS3CrashStorage, self).__init__(
             config,
             quit_check_callback
         )
@@ -83,18 +84,26 @@ class CephCrashStorage(CrashStorageBase):
         )
 
         # short cuts to external resources - makes testing/mocking easier
-        self._connect_to_ceph = boto.connect_s3
+        self._connect_to_endpoint = boto.connect_s3
         self._calling_format = boto.s3.connection.OrdinaryCallingFormat
         self._CreateError = boto.exception.S3CreateError
         self._open = open
 
     #--------------------------------------------------------------------------
     @staticmethod
-    def do_save_raw_crash(ceph_store, raw_crash, dumps, crash_id):
-        raw_crash_as_string = ceph_store._convert_mapping_to_string(raw_crash)
-        ceph_store._submit_to_ceph(crash_id, "raw_crash", raw_crash_as_string)
-        dump_names_as_string = ceph_store._convert_list_to_string(dumps.keys())
-        ceph_store._submit_to_ceph(
+    def do_save_raw_crash(boto_s3_store, raw_crash, dumps, crash_id):
+        raw_crash_as_string = boto_s3_store._convert_mapping_to_string(
+            raw_crash
+        )
+        boto_s3_store._submit_to_boto_s3(
+            crash_id,
+            "raw_crash",
+            raw_crash_as_string
+        )
+        dump_names_as_string = boto_s3_store._convert_list_to_string(
+            dumps.keys()
+        )
+        boto_s3_store._submit_to_boto_s3(
             crash_id,
             "dump_names",
             dump_names_as_string
@@ -102,7 +111,7 @@ class CephCrashStorage(CrashStorageBase):
         for dump_name, dump in dumps.iteritems():
             if dump_name in (None, '', 'upload_file_minidump'):
                 dump_name = 'dump'
-            ceph_store._submit_to_ceph(crash_id, dump_name, dump)
+            boto_s3_store._submit_to_boto_s3(crash_id, dump_name, dump)
 
     #--------------------------------------------------------------------------
     def save_raw_crash(self, raw_crash, dumps, crash_id):
@@ -115,7 +124,7 @@ class CephCrashStorage(CrashStorageBase):
         processed_crash_as_string = self._convert_mapping_to_string(
             processed_crash
         )
-        self._submit_to_ceph(
+        self._submit_to_boto_s3(
             crash_id,
             "processed_crash",
             processed_crash_as_string
@@ -127,8 +136,8 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     @staticmethod
-    def do_get_raw_crash(ceph_store, crash_id):
-        raw_crash_as_string = ceph_store._fetch_from_ceph(
+    def do_get_raw_crash(boto_s3_store, crash_id):
+        raw_crash_as_string = boto_s3_store._fetch_from_boto_s3(
             crash_id,
             "raw_crash"
         )
@@ -140,10 +149,10 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     @staticmethod
-    def do_get_raw_dump(ceph_store, crash_id, name=None):
+    def do_get_raw_dump(boto_s3_store, crash_id, name=None):
         if name is None:
             name = 'dump'
-        a_dump = ceph_store._fetch_from_ceph(crash_id, name)
+        a_dump = boto_s3_store._fetch_from_boto_s3(crash_id, name)
         return a_dump
 
     #--------------------------------------------------------------------------
@@ -152,15 +161,20 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     @staticmethod
-    def do_get_raw_dumps(ceph_store, crash_id):
-        dump_names_as_string = ceph_store._fetch_from_ceph(
+    def do_get_raw_dumps(boto_s3_store, crash_id):
+        dump_names_as_string = boto_s3_store._fetch_from_boto_s3(
             crash_id,
             "dump_names"
         )
-        dump_names = ceph_store._convert_string_to_list(dump_names_as_string)
+        dump_names = boto_s3_store._convert_string_to_list(
+            dump_names_as_string
+        )
         dumps = {}
         for dump_name in dump_names:
-            dumps[dump_name] = ceph_store._fetch_from_ceph(crash_id, dump_name)
+            dumps[dump_name] = boto_s3_store._fetch_from_boto_s3(
+                crash_id,
+                dump_name
+            )
         return dumps
 
     #--------------------------------------------------------------------------
@@ -169,25 +183,25 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     @staticmethod
-    def do_get_raw_dumps_as_files(ceph_store, crash_id):
+    def do_get_raw_dumps_as_files(boto_s3_store, crash_id):
         """the default implementation of fetching all the dumps as files on
         a file system somewhere.  returns a list of pathnames.
 
         parameters:
            crash_id - the id of a dump to fetch"""
-        dumps_mapping = ceph_store.get_raw_dumps(crash_id)
+        dumps_mapping = boto_s3_store.get_raw_dumps(crash_id)
         name_to_pathname_mapping = {}
         for a_dump_name, a_dump in dumps_mapping.iteritems():
             dump_pathname = os.path.join(
-                ceph_store.config.temporary_file_system_storage_path,
+                boto_s3_store.config.temporary_file_system_storage_path,
                 "%s.%s.TEMPORARY%s" % (
                     crash_id,
                     a_dump_name,
-                    ceph_store.config.dump_file_suffix
+                    boto_s3_store.config.dump_file_suffix
                 )
             )
             name_to_pathname_mapping[a_dump_name] = dump_pathname
-            with ceph_store._open(dump_pathname, 'wb') as f:
+            with boto_s3_store._open(dump_pathname, 'wb') as f:
                 f.write(a_dump)
         return name_to_pathname_mapping
 
@@ -197,8 +211,8 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     @staticmethod
-    def do_get_unredacted_processed(ceph_store, crash_id):
-        processed_crash_as_string = ceph_store._fetch_from_ceph(
+    def do_get_unredacted_processed(boto_s3_store, crash_id):
+        processed_crash_as_string = boto_s3_store._fetch_from_boto_s3(
             crash_id,
             "processed_crash"
         )
@@ -212,7 +226,7 @@ class CephCrashStorage(CrashStorageBase):
         return self.transaction(self.do_get_unredacted_processed, crash_id)
 
     #--------------------------------------------------------------------------
-    def _submit_to_ceph(self, crash_id, name_of_thing, thing):
+    def _submit_to_boto_s3(self, crash_id, name_of_thing, thing):
         """submit something to ceph.
         """
         if not isinstance(thing, basestring):
@@ -241,7 +255,7 @@ class CephCrashStorage(CrashStorageBase):
         storage_key.set_contents_from_string(thing)
 
     #--------------------------------------------------------------------------
-    def _fetch_from_ceph(self, crash_id, name_of_thing):
+    def _fetch_from_boto_s3(self, crash_id, name_of_thing):
         """submit something to ceph.
         """
         conn = self._connect()
@@ -267,7 +281,7 @@ class CephCrashStorage(CrashStorageBase):
 
     #--------------------------------------------------------------------------
     def _connect(self):
-        return self._connect_to_ceph(
+        return self._connect_to_endpoint(
             aws_access_key_id=self.config.access_key,
             aws_secret_access_key=self.config.secret_access_key,
             host=self.config.host,
