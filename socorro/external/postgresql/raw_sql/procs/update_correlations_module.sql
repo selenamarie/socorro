@@ -35,11 +35,11 @@ END IF;
 
 --create correlations_module matview
 WITH crash AS (
-    SELECT json_array_elements(processed_crash->'json_dump'->'modules') AS modules,
-           product_version_id,
-           signature_id,
-           reports_clean.date_processed::date,
-           reports_clean.os_name
+    SELECT json_array_elements(processed_crash->'json_dump'->'modules') AS modules
+           , product_version_id
+           , signature_id
+           , reports_clean.date_processed::date
+           , reports_clean.os_name
     FROM processed_crashes
     JOIN reports_clean ON (processed_crashes.uuid::text = reports_clean.uuid)
     JOIN product_versions USING (product_version_id)
@@ -49,28 +49,43 @@ WITH crash AS (
         BETWEEN updateday::timestamptz AND updateday::timestamptz + '1 day'::interval
 
     AND sunset_date > now()
+), modules as (
+    INSERT INTO modules (
+        name
+        , version
+    )
+    SELECT
+        (modules->'filename')::text as name
+        , (modules->'debug_file')::text as version
+    FROM
+        crash
+    WHERE
+        (modules->'filename')::text IS NOT NULL
+    AND (modules->'debug_file')::text IS NOT NULL
+    RETURNING module_id, name, version
 )
 INSERT INTO correlations_module (
     product_version_id
-    , module_name
-    , module_version
+    , module_id
     , report_date
     , os_name
     , signature_id
     , total
 )
 SELECT product_version_id
-       , (modules->'filename')::text as module_name
-       , (modules->'debug_file')::text as module_version
+       , module_id
        , date_processed as report_date
        , os_name
        , signature_id
        , count(*) as total
 FROM crash
-WHERE (modules->'filename')::text IS NOT NULL
+    JOIN modules
+        ON (modules->'filename')::text = modules.name AND
+        ON (modules->'debug_file')::text = modules.version
+WHERE
+    (modules->'filename')::text IS NOT NULL
 AND (modules->'debug_file')::text IS NOT NULL
-GROUP BY module_name
-         , module_version
+GROUP BY module_id
          , product_version_id
          , report_date
          , os_name
