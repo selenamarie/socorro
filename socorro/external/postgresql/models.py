@@ -585,10 +585,11 @@ class CorrelationsModule(DeclarativeBase):
     report_date = Column(u'report_date', DATE(), nullable=False, index=True)
     os_name = Column(u'os_name', TEXT(), nullable=False)
     signature_id = Column(u'signature_id', INTEGER(), primary_key=False, nullable=False, index=True)
-<<<<<<< HEAD
     reason_id = Column(u'reason_id', INTEGER(), nullable=False, index=False)
     total = Column(u'total', INTEGER())
+
     __mapper_args__ = {"primary_key": (product_version_id, module_id, report_date, os_name, signature_id)}
+    __table_args__ = {'schema': 'public'}
 
 
 class Module(DeclarativeBase):
