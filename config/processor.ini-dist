@@ -181,7 +181,8 @@
     #redactor_class=socorro.external.crashstorage_base.Redactor
 
     # a comma delimited list of storage classes
-    storage_classes='socorro.external.fs.crashstorage.FSPermanentStorage, socorro.external.postgresql.crashstorage.PostgreSQLCrashStorage'
+    #storage_classes='socorro.external.fs.crashstorage.FSPermanentStorage, socorro.external.postgresql.crashstorage.PostgreSQLCrashStorage'
+    storage_classes='socorro.external.fs.crashstorage.FSPermanentStorage, socorro.external.crashstorage_base.BenchmarkingCrashStorage'
 
     [[storage0]]
 
@@ -227,7 +228,9 @@
     [[storage1]]
 
         # None
-        crashstorage_class=socorro.external.postgresql.crashstorage.PostgreSQLCrashStorage
+        crashstorage_class=socorro.external.crashstorage_base.BenchmarkingCrashStorage
+        wrapped_crashstore=socorro.external.postgresql.crashstorage.PostgreSQLCrashStorage
+        benchmark_tag='Benchmark: '
 
         # the class responsible for connecting to Postgres
         # see "resource.postgresql.database_class" for the default or override it here
