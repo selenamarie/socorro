@@ -44,6 +44,8 @@ class Bugs(PostgreSQLWebServiceBase):
     def get(self, **kwargs):
         import warnings
         warnings.warn("You should use the POST method to access bugs")
+        # We redirect GET to POST because the list of IDs is too big
+        # for a GET query string.
         return self.post(**kwargs)
 
     #--------------------------------------------------------------------------
