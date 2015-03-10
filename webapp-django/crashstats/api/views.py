@@ -1,5 +1,4 @@
 import json
-import hashlib
 import re
 import datetime
 
@@ -15,7 +14,6 @@ from django.forms.forms import DeclarativeFieldsMetaclass
 
 from ratelimit.decorators import ratelimit
 from waffle.decorators import waffle_switch
-from socorro.webapi.webapiService import DataserviceWebServiceBase
 
 import crashstats.supersearch.models
 from crashstats.crashstats import models

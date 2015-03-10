@@ -3,8 +3,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import functools
+import hashlib
+import json
+import logging
+import os
+import stat
+import time
 
 from django.conf import settings
+from django.core.cache import cache
 from configman import (
     configuration,
     # ConfigFileFutureProxy,
@@ -17,7 +24,9 @@ from socorro.dataservice.util import (
     classes_in_namespaces_converter,
 )
 
-from collections import Mapping, Iterable
+
+logger = logging.getLogger('dataservice_models')
+
 
 def memoize(function):
     """Decorator for model methods to cache in memory or the filesystem
@@ -96,8 +105,6 @@ def memoize(function):
     return memoizer
 
 
-
-
 SERVICES_LIST = ('socorro.external.postgresql.bugs_service.Bugs',)
 
 # Allow configman to dynamically load the configuration and classes
@@ -125,11 +132,13 @@ settings.DATASERVICE_CONFIG = configuration(
 
 magic = {}
 for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
-    if key.startswith('services') and  '.' in key:
+    if key.startswith('services') and '.' in key:
         local_config = settings.DATASERVICE_CONFIG[key]
         if isinstance(local_config, DotDict):
             service_implementation_class_key = '.'.join((key, 'service_class'))
-            impl_class = settings.DATASERVICE_CONFIG[service_implementation_class_key]
+            impl_class = \
+                settings.DATASERVICE_CONFIG[service_implementation_class_key]
+
             class AService(object):
                 implementation_class = impl_class
                 required_params = local_config.required_params
@@ -141,12 +150,12 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
                 API_BINARY_FILENAME = local_config.api_binary_filename
                 API_BINARY_PERMISSIONS = local_config.api_binary_permissions
                 API_WHITELIST = local_config.api_whitelist
-                API_REQUIRED_PERMISSIONS = local_config.api_required_permissions
+                API_REQUIRED_PERMISSIONS = \
+                    local_config.api_required_permissions
 
                 @memoize
                 def get(self, **kwargs):
-                    impl_args = DotDict()
-                    impl = implementation_class(local_config)
+                    impl = self.implementation_class(local_config)
                     result = getattr(impl, local_config.method)(**kwargs)
                     return result
 
@@ -158,8 +167,10 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
                         * type
                         * required
                     """
-                    for required, items in ((True, getattr(self, 'required_params', [])),
-                                            (False, getattr(self, 'possible_params', []))):
+                    for required, items in (
+                        (True, getattr(self, 'required_params', [])),
+                        (False, getattr(self, 'possible_params', []))
+                    ):
                         for item in items:
                             if isinstance(item, basestring):
                                 type_ = basestring
@@ -182,4 +193,3 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
                 impl_class.__name__
             )
             magic[impl_class.__name__] = AService
-

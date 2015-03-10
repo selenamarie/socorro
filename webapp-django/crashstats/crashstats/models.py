@@ -27,12 +27,10 @@ from crashstats.api.cleaner import Cleaner
 # settings.INSTALLED_APPS list.
 # This can happen if you use django-nose on a specific file.
 # See https://bugzilla.mozilla.org/show_bug.cgi?id=1121749
-
 from crashstats.dataservice.models import magic
+# This is a temporary measure to make dataservice models
+# visible to the api
 globals().update(magic)
-import sys
-
-#models = models  # silence pyflakes
 
 
 logger = logging.getLogger('crashstats_models')
@@ -175,7 +173,6 @@ def measure_fetches(method):
             return result
 
     return inner
-
 
 
 class SocorroCommon(object):
@@ -1185,23 +1182,6 @@ class CrashesByExploitability(SocorroMiddleware):
     API_WHITELIST = None
 
 
-#class Bugs(SocorroMiddleware):
-
-    #required_params = settings.DATASERVICE_CONFIG.services.Bugs.required_params
-    #expect_json = settings.DATASERVICE_CONFIG.services.Bugs.output_is_json
-
-    #API_WHITELIST = settings.DATASERVICE_CONFIG.services.Bugs.api_whitelist
-
-    #@memoize
-    #def get(self, **kwargs):
-        #bugs_cls = settings.DATASERVICE_CONFIG.services.Bugs.cls
-        #bugs = bugs_cls(settings.DATASERVICE_CONFIG.services.Bugs)
-
-        #if not kwargs.get('signatures'):
-            #raise ValueError("'signatures' can not be empty")
-        #return bugs.post(**kwargs)
-
-
 class SignaturesByBugs(SocorroMiddleware):
 
     settings.DATASERVICE_CONFIG.services.Bugs.required_params = (
@@ -1214,7 +1194,7 @@ class SignaturesByBugs(SocorroMiddleware):
     API_WHITELIST = settings.DATASERVICE_CONFIG.services.Bugs.api_whitelist
 
     def get(self, **kwargs):
-        bugs_cls = settings.DATASERVICE_CONFIG.services.Bugs.cls
+        bugs_cls = settings.DATASERVICE_CONFIG.services.Bugs.service_class
         bugs = bugs_cls(settings.DATASERVICE_CONFIG.services.Bugs)
 
         if not kwargs.get('bug_ids'):
@@ -1555,5 +1535,3 @@ class AduBySignature(SocorroMiddleware):
         'hits',
         'total',
     )
-
-print >> sys.stderr, "BOOGA: ", globals().keys()
