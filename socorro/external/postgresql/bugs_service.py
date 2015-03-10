@@ -40,6 +40,11 @@ class Bugs(PostgreSQLWebServiceBase):
         'required_params',
         default=('signatures',),
     )
+    required_config.add_option(
+        'method',
+        default='post',
+        doc='what is the default method for doing what needs to be done',
+    )
     #--------------------------------------------------------------------------
     def get(self, **kwargs):
         import warnings
