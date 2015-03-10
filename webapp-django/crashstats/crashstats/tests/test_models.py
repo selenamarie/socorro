@@ -845,45 +845,18 @@ class TestModels(TestCase):
         ok_(r['product'])
         ok_(r['exploitability'])
 
-    @mock.patch('crashstats.crashstats.models.settings'
-                '.DATASERVICE_CONFIG.services.Bugs')
-    def test_bugs(self, rpost):
-        model = models.Bugs
-        api = model()
-
-        def mocked_post(**options):
-            assert options['data'] == {'signatures': 'Pickle::ReadBytes'}
-            return {"hits": ["123456789"]}
-        rpost.side_effect = mocked_post
-
-        r = api.get(signatures='Pickle::ReadBytes')
-        ok_(r['hits'])
-
-    def test_bugs_called_without_signatures(self):
-        model = models.Bugs
-        api = model()
-
-        assert_raises(ValueError, api.get)
-
-    @mock.patch('crashstats.crashstats.models.settings'
-                '.DATASERVICE_CONFIG.services.Bugs')
-    def test_signatures_by_bugs(self, rpost):
-        model = models.SignaturesByBugs
-        api = model()
-
-        def mocked_post(**options):
-            assert options['data'] == {'bug_ids': '123456789'}
-            return {"hits": {"signatures": "Pickle::ReadBytes"}}
-
-        rpost.side_effect = mocked_post
-        r = api.get(bug_ids='123456789')
-        ok_(r['hits'])
-
-    def test_sigs_by_bugs_called_without_bug_ids(self):
-        model = models.SignaturesByBugs
-        api = model()
-
-        assert_raises(ValueError, api.get)
+# Move these tests into socorro.external.postgresql.bugs_service tests
+#    def test_bugs_called_without_signatures(self):
+#        model = models.Bugs
+#        api = model()
+#
+#        assert_raises(ValueError, api.get)
+#
+#    def test_sigs_by_bugs_called_without_bug_ids(self):
+#        model = models.SignaturesByBugs
+#        api = model()
+#
+#        assert_raises(ValueError, api.get)
 
     @mock.patch('requests.get')
     def test_signature_trend(self, rget):
