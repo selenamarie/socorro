@@ -15,9 +15,6 @@ from socorro.lib import external_common
 class Bugs(PostgreSQLWebServiceBase):
     """Implement the /bugs service with PostgreSQL. """
 
-    # Necessary for use with socorro.webapi.servers.WebServerBase
-    uri = r'/bugs/(.*)'
-
     # This enables creating a bug_ids key whether or not kwargs passes one in
     # needed by post(). Revisit need for this in future API revision.
     filters = [
@@ -44,6 +41,31 @@ class Bugs(PostgreSQLWebServiceBase):
         'method',
         default='post',
         doc='what is the default method for doing what needs to be done',
+    )
+    required_config.add_option(
+        'uri',
+        default=r'/bugs/(.*)',
+        doc='Regular expression for matching URLs in Django urls.py'
+    )
+    required_config.add_option(
+        'api_binary_response',
+        doc='api binary response',
+        default={}
+    )
+    required_config.add_option(
+        'api_binary_filename',
+        doc='api binary filename',
+        default=None
+    )
+    required_config.add_option(
+        'api_binary_permissions',
+        doc='api binary permissions',
+        default=()
+    )
+    required_config.add_option(
+        'api_required_permissions',
+        doc='api required permissions',
+        default=None
     )
     #--------------------------------------------------------------------------
     def get(self, **kwargs):

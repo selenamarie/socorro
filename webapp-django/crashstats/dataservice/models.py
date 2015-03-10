@@ -128,14 +128,20 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
     if key.startswith('services') and  '.' in key:
         local_config = settings.DATASERVICE_CONFIG[key]
         if isinstance(local_config, DotDict):
-            print 'XXXXXXXXXXX IT WORKED'
             service_implementation_class_key = '.'.join((key, 'service_class'))
             impl_class = settings.DATASERVICE_CONFIG[service_implementation_class_key]
             class AService(object):
                 implementation_class = impl_class
                 required_params = local_config.required_params
                 expect_json = local_config.output_is_json
+                cache_seconds = local_config.cache_seconds
+                uri = local_config.uri
+
+                API_BINARY_RESPONSE = local_config.api_binary_response
+                API_BINARY_FILENAME = local_config.api_binary_filename
+                API_BINARY_PERMISSIONS = local_config.api_binary_permissions
                 API_WHITELIST = local_config.api_whitelist
+                API_REQUIRED_PERMISSIONS = local_config.api_required_permissions
 
                 @memoize
                 def get(self, **kwargs):
