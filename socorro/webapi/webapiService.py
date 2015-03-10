@@ -216,7 +216,6 @@ DONT_TERM_SPLIT = re.compile("""
 class DataserviceWebServiceBase(JsonWebServiceBase):
     def __init__(self, config):
         namespace_name = self.__class__.__name__.split('.')[-1]
-        print config
         self.config = config.services[namespace_name]
         #self.context = self.config
 

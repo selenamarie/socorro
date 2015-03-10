@@ -180,7 +180,6 @@ def model_wrapper(request, model_name):
     for source in MODELS_MODULES:
         try:
             model = getattr(source, model_name)
-            print "FOUND IT %s" % model_name
             break
         except AttributeError:
             pass
