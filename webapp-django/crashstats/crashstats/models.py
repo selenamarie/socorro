@@ -27,8 +27,13 @@ from crashstats.api.cleaner import Cleaner
 # settings.INSTALLED_APPS list.
 # This can happen if you use django-nose on a specific file.
 # See https://bugzilla.mozilla.org/show_bug.cgi?id=1121749
-from crashstats.dataservice import models
-models = models  # silence pyflakes
+
+from crashstats.dataservice.models import magic
+globals().update(magic)
+import sys
+
+#models = models  # silence pyflakes
+
 
 logger = logging.getLogger('crashstats_models')
 
@@ -1550,3 +1555,5 @@ class AduBySignature(SocorroMiddleware):
         'hits',
         'total',
     )
+
+print >> sys.stderr, "BOOGA: ", globals().keys()

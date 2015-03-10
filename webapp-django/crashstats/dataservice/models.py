@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import functools
+
 from django.conf import settings
 from configman import (
     configuration,
@@ -9,12 +11,11 @@ from configman import (
     Namespace,
     environment
 )
+from configman.dotdict import DotDict
 from socorro.app.socorro_app import App
-
 from socorro.dataservice.util import (
     classes_in_namespaces_converter,
 )
-from crashstats.crashstats.models import memoize
 
 from collections import Mapping, Iterable
 
@@ -110,7 +111,7 @@ def_source.services.add_option(
     from_string_converter=classes_in_namespaces_converter('service_class')
 )
 
-settings.DATASERVICE_CONFIG = settings.DATASERVICE_CONFIG(
+settings.DATASERVICE_CONFIG = configuration(
     definition_source=[
         def_source,
         App.get_required_config(),
@@ -122,10 +123,12 @@ settings.DATASERVICE_CONFIG = settings.DATASERVICE_CONFIG(
     ]
 )
 
-for key in settings.DATASERVICE_CONFIG.keys_breadth_first():
+magic = {}
+for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
     if key.startswith('services') and  '.' in key:
         local_config = settings.DATASERVICE_CONFIG[key]
-        if isinstance(local_config, Namespace):
+        if isinstance(local_config, DotDict):
+            print 'XXXXXXXXXXX IT WORKED'
             service_implementation_class_key = '.'.join((key, 'service_class'))
             impl_class = settings.DATASERVICE_CONFIG[service_implementation_class_key]
             class AService(object):
@@ -133,14 +136,44 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first():
                 required_params = local_config.required_params
                 expect_json = local_config.output_is_json
                 API_WHITELIST = local_config.api_whitelist
-                
+
                 @memoize
                 def get(self, **kwargs):
                     impl_args = DotDict()
                     impl = implementation_class(local_config)
                     result = getattr(impl, local_config.method)(**kwargs)
                     return result
-                
+
+                def get_annotated_params(self):
+                    """return an iterator. One dict for each parameter that the
+                    class takes.
+                    Each dict must have the following keys:
+                        * name
+                        * type
+                        * required
+                    """
+                    for required, items in ((True, getattr(self, 'required_params', [])),
+                                            (False, getattr(self, 'possible_params', []))):
+                        for item in items:
+                            if isinstance(item, basestring):
+                                type_ = basestring
+                                name = item
+                            elif isinstance(item, dict):
+                                type_ = item['type']
+                                name = item['name']
+                            else:
+                                assert isinstance(item, tuple)
+                                name = item[0]
+                                type_ = item[1]
+
+                            yield {
+                                'name': name,
+                                'required': required,
+                                'type': type_,
+                            }
+
             AService.__name__ = (
                 impl_class.__name__
             )
+            magic[impl_class.__name__] = AService
+

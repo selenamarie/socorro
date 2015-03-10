@@ -113,6 +113,36 @@ class DataserviceApp(App):
         application = self.web_server.run()
 
 
+    def get_annotated_params(self):
+        """return an iterator. One dict for each parameter that the
+        class takes.
+        Each dict must have the following keys:
+            * name
+            * type
+            * required
+        """
+        for required, items in ((True, getattr(self, 'required_params', [])),
+                                (False, getattr(self, 'possible_params', []))):
+            for item in items:
+                if isinstance(item, basestring):
+                    type_ = basestring
+                    name = item
+                elif isinstance(item, dict):
+                    type_ = item['type']
+                    name = item['name']
+                else:
+                    assert isinstance(item, tuple)
+                    name = item[0]
+                    type_ = item[1]
+
+                yield {
+                    'name': name,
+                    'required': required,
+                    'type': type_,
+                }
+
+
+
 #==============================================================================
 if __name__ == '__main__':
     main(DataserviceApp)
