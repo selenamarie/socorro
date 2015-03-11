@@ -364,7 +364,11 @@ def documentation(request):
 
     for model in all_models:
         try:
-            if not issubclass(model, models.SocorroMiddleware):
+            # if it is socorro middleware, not in the blacklist, is_documented
+            if (
+                not issubclass(model, models.SocorroMiddleware) and
+                not hasattr(model, 'is_documented')
+            ):
                 continue
             if model is models.SocorroMiddleware:
                 continue

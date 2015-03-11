@@ -145,6 +145,7 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
                 expect_json = local_config.output_is_json
                 cache_seconds = local_config.cache_seconds
                 uri = local_config.uri
+                is_documented = True
 
                 API_BINARY_RESPONSE = local_config.api_binary_response
                 API_BINARY_FILENAME = local_config.api_binary_filename
