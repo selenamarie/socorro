@@ -154,10 +154,13 @@ for key in settings.DATASERVICE_CONFIG.keys_breadth_first(include_dicts=True):
                 API_REQUIRED_PERMISSIONS = \
                     local_config.api_required_permissions
 
+                def __init__(self, config=local_config):
+                    self.config = config
+
                 @memoize
                 def get(self, **kwargs):
-                    impl = self.implementation_class(local_config)
-                    result = getattr(impl, local_config.method)(**kwargs)
+                    impl = self.implementation_class(self.config)
+                    result = getattr(impl, self.config.method)(**kwargs)
                     return result
 
                 def get_annotated_params(self):
