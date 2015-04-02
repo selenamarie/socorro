@@ -48,6 +48,6 @@ for filename in glob.glob(os.path.join(partition_dir, "*")):
 
 if len(errors) > 1:
     print "FAILED: some files returned errors:", str(errors)
-    return 1
+    exit(1)
 
-return 0
+exit(0)
